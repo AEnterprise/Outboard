@@ -1,0 +1,5 @@
+config/*
+!config/template.json
+.idea/
+venv/
+logs/
