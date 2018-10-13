@@ -3,3 +3,4 @@ config/*
 .idea/
 venv/
 logs/
+*__pycache__/

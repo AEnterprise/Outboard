@@ -1,0 +1,50 @@
+#! /bin/sh
+
+if [ $(whoami) != "root" ]; then
+	echo "This installer needs to be ran by root (or with sudo) to work"
+	exit
+fi
+
+echo "Installing requirements..."
+
+python3 -m pip install -U git+https://github.com/Rapptz/discord.py@rewrite
+
+echo "Requirements installed, creating config, please answer the following questions. If you make a mistake you can terminate the script and start again or edit the values in config/master.json"
+
+read -p "Please enter your bot token: " token
+read -p "Please insert the ID of the channel I can use for startup and error logs: " channel
+
+cat > config/master.json << EOL
+{
+  "TOKEN": "$token",
+  "BOT_LOG_CHANNEL": $channel
+}
+EOL
+
+echo "Config file created, creating service file"
+dir=$(pwd)
+user=$(who am i | awk '{print $1}')
+cat > /etc/systemd/system/outboard.service << EOL
+[Unit]
+Description="Outboard service"
+After=network.target
+
+[Service]
+WorkingDirectory=$dir
+ExecStart=$dir/Bootloader
+Restart=always
+User=$user
+
+[Install]
+WantedBy=multi-user.target
+EOL
+
+echo "Service file created, reloading deamon"
+systemctl daemon-reload
+
+echo "reloaded, configuring service to start with the system"
+systemctl enable outboard
+echo "done, starting service"
+systemctl start outboard
+echo "Outboard started, installer complete"
+echo "Logs can be found by using journalctl or in the logs folder"
