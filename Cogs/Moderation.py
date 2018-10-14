@@ -1,14 +1,18 @@
+import asyncio
+
 import discord
 from discord.ext import commands
 from discord.ext.commands import MemberConverter, BadArgument, Greedy
 
-from Util import Utils, Confirmation
+from Util import Utils, Confirmation, Configuration, Logging
 from Util.Converters import PotentialID, Reason
 
 
 class Moderation:
     def __init__(self, bot):
         self.bot: commands.Bot = bot
+        self.counters = dict(WARNING=dict(), ALARM=dict())
+        self.active = dict(WARNING=set(), ALARM=set())
 
     async def __local_check(self, ctx):
         return ctx.author.guild_permissions.ban_members
@@ -67,6 +71,30 @@ class Moderation:
                     await ctx.send(page)
 
         await Confirmation.confirm(ctx, "Are you sure you want to ban all those people?", on_yes=yes)
+
+    async def on_member_join(self, member: discord.Member):
+        self.bot.loop.create_task(self.track_for("WARNING", member.guild))
+        self.bot.loop.create_task(self.track_for("ALARM", member.guild))
+
+    async def track_for(self, kind, guild):
+        counter = self.counters[kind]
+        if guild.id not in counter:
+            counter[guild.id] = 0
+        counter[guild.id] += 1
+        amount = Configuration.get_var(guild.id, f"RAID_{kind}_AMOUNT")
+        if counter[guild.id] >= amount and guild.id not in self.active[kind]:
+            self.active[kind].add(guild.id)
+            await self.sound_the(kind, guild)
+        await asyncio.sleep(Configuration.get_var(guild.id, f"RAID_{kind}_TIMEFRAME"))
+
+    async def sound_the(self, kind, guild):
+        Logging.info(f"Anti-raid {kind} triggered for {guild.name} ({guild.id})!")
+        channel = self.bot.get_channel(Configuration.get_var(guild.id, f"MOD_CHANNEL"))
+        if channel is not None:
+            await channel.send(Configuration.get_var(guild.id, f"RAID_{kind}_MESSAGE"))
+        else:
+            Logging.warn(f"Unable to sound the {kind} in {guild.name} ({guild.id})")
+            await guild.owner.send(f"🚨 Anti-raid {kind} triggered for {guild.name} but the mod channel is misconfigured 🚨")
 
 
 def setup(bot):
