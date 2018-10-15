@@ -1,6 +1,6 @@
 from discord.ext import commands
 
-# Maintencance stuff, locked to owner only
+# Maintenance stuff, locked to owner only
 from Util import Utils, Logging, Configuration
 
 
