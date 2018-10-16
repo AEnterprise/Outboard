@@ -91,6 +91,12 @@ class Moderation:
                 await self.mute(member)
         await asyncio.sleep(Configuration.get_var(guild.id, f"RAID_{kind}_TIMEFRAME"))
         tracker[guild.id].remove(member)
+        if len(tracker[guild.id]) < amount and guild.id in self.active[kind]:
+            self.active[kind].remove(guild.id)
+            Logging.info(f"{kind} lifted for {guild.name}")
+            channel = self.bot.get_channel(Configuration.get_var(guild.id, f"MOD_CHANNEL"))
+            if channel is not None:
+                await channel.send(f"{kind} has been lifted")
 
     async def sound_the(self, kind, guild):
         Logging.info(f"Anti-raid {kind} triggered for {guild.name} ({guild.id})!")
