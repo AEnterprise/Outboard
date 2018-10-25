@@ -1,4 +1,6 @@
 import asyncio
+import datetime
+import os
 
 import discord
 from discord.ext import commands
@@ -13,9 +15,19 @@ class Moderation:
         self.bot: commands.Bot = bot
         self.trackers = dict(WARNING=dict(), ALARM=dict())
         self.active = dict(WARNING=set(), ALARM=set())
+        self.bad_names = []
+        self.load_bad_names()
 
     async def __local_check(self, ctx):
         return ctx.author.guild_permissions.ban_members
+
+    def load_bad_names(self):
+        if os.path.isfile("bad_names.txt"):
+            with open("bad_names.txt") as namefile:
+                self.bad_names = namefile.readlines()
+        else:
+            with open("bad_names.txt", "w") as namefile:
+                namefile.write("PLEASE REMOVE THIS LINE AND PUT ALL NAMES TO KICK UPON JOINING HERE, ONE NAME PER LINE, CASE INSENSITIVE")
 
     @staticmethod
     def _can_act(ctx, user: discord.Member):
@@ -75,6 +87,7 @@ class Moderation:
     async def on_member_join(self, member: discord.Member):
         self.bot.loop.create_task(self.track_for("WARNING", member))
         self.bot.loop.create_task(self.track_for("ALARM", member))
+        await self.check_name(member)
 
     async def track_for(self, kind, member):
         guild = member.guild
@@ -105,7 +118,8 @@ class Moderation:
             await channel.send(Configuration.get_var(guild.id, f"RAID_{kind}_MESSAGE"))
         else:
             Logging.warn(f"Unable to sound the {kind} in {guild.name} ({guild.id})")
-            await guild.owner.send(f"🚨 Anti-raid {kind} triggered for {guild.name} but the mod channel is misconfigured 🚨")
+            await guild.owner.send(
+                f"🚨 Anti-raid {kind} triggered for {guild.name} but the mod channel is misconfigured 🚨")
         if kind == "ALARM":
             for m in self.trackers[kind][guild.id]:
                 await self.mute(m)
@@ -113,7 +127,26 @@ class Moderation:
     async def mute(self, member):
         role = member.guild.get_role(Configuration.get_var(member.guild.id, "MUTE_ROLE"))
         if role is not None:
-            await member.add_roles(role, reason="Raid alarm triggered")
+            try:
+                await member.add_roles(role, reason="Raid alarm triggered")
+            except discord.HTTPException:
+                Logging.warn(f"failed to mute {member} ({member.id}!")
+
+    async def on_member_update(self, before, after):
+        if before.nick != after.nick or before.name != after.name:
+            await self.check_name(after)
+
+    async def check_name(self, member):
+        if member.nick is not None:
+            nick = member.nick.lower()
+            if any(bad in nick for bad in self.bad_names):
+                await member.edit(nick="Squeaky clean")
+        name = member.name.lower()
+        if any(bad in name for bad in self.bad_names):
+            channel = self.bot.get_channel(Configuration.get_var(member.guild.id, "ACTION_CHANNEL"))
+            if channel is not None:
+                await channel.send(f"!kick {member.id} bad username")
+
 
 def setup(bot):
     bot.add_cog(Moderation(bot))

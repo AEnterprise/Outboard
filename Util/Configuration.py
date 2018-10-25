@@ -11,9 +11,14 @@ MASTER_LOADED = False
 CONFIG_VERSION = 0
 
 
+def v2(config):
+    config["ACTION_CHANNEL"] = 0
+    return config
+
+
 # migrators for the configs, do NOT increase the version here, this is done by the migration loop
 # doubt we'll actually need the full flexibility this offers but i made it for gearbot so might as well use it to future proof this bot
-MIGRATORS = []
+MIGRATORS = [v2]
 
 
 async def on_ready(bot: commands.Bot):
@@ -64,9 +69,9 @@ def update_config(guild, config):
         if not os.path.isdir(d):
             os.makedirs(d)
         Utils.save_to_disk(f"{d}/{guild}", config)
-        config = MIGRATORS[config["VERSION"]](config)
+        config = MIGRATORS[config["VERSION"]-1](config)
         config["VERSION"] += 1
-        Utils.save_to_disk(guild, config)
+        Utils.save_to_disk(f"config/{guild}", config)
 
     return config
 
@@ -96,7 +101,6 @@ def get_master_var(key, default=None):
     if not MASTER_LOADED:
         load_master()
     if key not in MASTER_CONFIG.keys():
-        
         MASTER_CONFIG[key] = default
         save_master()
     return MASTER_CONFIG[key]

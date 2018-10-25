@@ -32,6 +32,7 @@ class Maintenance:
         async with ctx.typing():
             Configuration.load_master()
             await Configuration.on_ready(self.bot)
+            self.bot.cogs["Moderation"].load_bad_names()
         await ctx.send("Configs reloaded")
 
     @commands.command()
