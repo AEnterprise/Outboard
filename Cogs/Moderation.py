@@ -23,10 +23,10 @@ class Moderation:
 
     def load_bad_names(self):
         if os.path.isfile("bad_names.txt"):
-            with open("bad_names.txt") as namefile:
+            with open("bad_names.txt", encoding="UTF-8") as namefile:
                 self.bad_names = namefile.readlines()
         else:
-            with open("bad_names.txt", "w") as namefile:
+            with open("bad_names.txt", "w", encoding="UTF-8") as namefile:
                 namefile.write("PLEASE REMOVE THIS LINE AND PUT ALL NAMES TO KICK UPON JOINING HERE, ONE NAME PER LINE, CASE INSENSITIVE")
 
     @staticmethod
@@ -144,8 +144,9 @@ class Moderation:
         name = member.name.lower()
         if any(bad in name for bad in self.bad_names):
             channel = self.bot.get_channel(Configuration.get_var(member.guild.id, "ACTION_CHANNEL"))
+            await member.kick(reason="Bad username")
             if channel is not None:
-                await channel.send(f"!kick {member.id} bad username")
+                await channel.send(f"Kicked {member} (``{member.id}``) for having a bad username")
 
 
 def setup(bot):
