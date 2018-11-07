@@ -24,7 +24,7 @@ class Moderation:
     def load_bad_names(self):
         if os.path.isfile("bad_names.txt"):
             with open("bad_names.txt", encoding="UTF-8") as namefile:
-                self.bad_names = namefile.readlines()
+                self.bad_names = [line.rstrip().strip() for line in namefile.readlines()]
         else:
             with open("bad_names.txt", "w", encoding="UTF-8") as namefile:
                 namefile.write("PLEASE REMOVE THIS LINE AND PUT ALL NAMES TO KICK UPON JOINING HERE, ONE NAME PER LINE, CASE INSENSITIVE")
