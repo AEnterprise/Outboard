@@ -1,6 +1,7 @@
 import asyncio
-import datetime
 import os
+import time
+from datetime import datetime
 
 import discord
 from discord.ext import commands
@@ -13,10 +14,19 @@ from Util.Converters import PotentialID, Reason
 class Moderation:
     def __init__(self, bot):
         self.bot: commands.Bot = bot
-        self.trackers = dict(WARNING=dict(), ALARM=dict())
-        self.active = dict(WARNING=set(), ALARM=set())
+        self.trackers = dict()
+        self.under_raid = dict()
         self.bad_names = []
         self.load_bad_names()
+        # all raid info
+        if not os.path.isdir("raids"):
+            os.mkdir("raids")
+            with open("raids/counter", "w") as file:
+                file.write("0")
+
+        # load last raid id
+        with open("raids/counter") as file:
+            self.last_raid = int(file.read())
 
     async def __local_check(self, ctx):
         return ctx.author.guild_permissions.ban_members
@@ -27,7 +37,8 @@ class Moderation:
                 self.bad_names = [line.rstrip().strip() for line in namefile.readlines()]
         else:
             with open("bad_names.txt", "w", encoding="UTF-8") as namefile:
-                namefile.write("PLEASE REMOVE THIS LINE AND PUT ALL NAMES TO KICK UPON JOINING HERE, ONE NAME PER LINE, CASE INSENSITIVE")
+                namefile.write(
+                    "PLEASE REMOVE THIS LINE AND PUT ALL NAMES TO KICK UPON JOINING HERE, ONE NAME PER LINE, CASE INSENSITIVE")
 
     @staticmethod
     def _can_act(ctx, user: discord.Member):
@@ -85,44 +96,123 @@ class Moderation:
         await Confirmation.confirm(ctx, "Are you sure you want to ban all those people?", on_yes=yes)
 
     async def on_member_join(self, member: discord.Member):
-        self.bot.loop.create_task(self.track_for("WARNING", member))
-        self.bot.loop.create_task(self.track_for("ALARM", member))
+        self.bot.loop.create_task(self._track(member))
         await self.check_name(member)
 
-    async def track_for(self, kind, member):
-        guild = member.guild
-        tracker = self.trackers[kind]
-        if guild.id not in tracker:
-            tracker[guild.id] = set()
-        tracker[guild.id].add(member)
-        amount = Configuration.get_var(guild.id, f"RAID_{kind}_AMOUNT")
-        if len(tracker[guild.id]) >= amount:
-            if guild.id not in self.active[kind]:
-                self.active[kind].add(guild.id)
-                await self.sound_the(kind, guild)
-            if kind == "ALARM":
-                await self.mute(member)
-        await asyncio.sleep(Configuration.get_var(guild.id, f"RAID_{kind}_TIMEFRAME"))
-        tracker[guild.id].remove(member)
-        if len(tracker[guild.id]) < amount and guild.id in self.active[kind]:
-            self.active[kind].remove(guild.id)
-            Logging.info(f"{kind} lifted for {guild.name}")
-            channel = self.bot.get_channel(Configuration.get_var(guild.id, f"MOD_CHANNEL"))
-            if channel is not None:
-                await channel.send(f"{kind} has been lifted")
+    async def _track(self, member):
+        # grab the tracker
+        guild_id = member.guild.id
+        if guild_id not in self.trackers:
+            self.trackers[guild_id] = list()
 
-    async def sound_the(self, kind, guild):
-        Logging.info(f"Anti-raid {kind} triggered for {guild.name} ({guild.id})!")
-        channel = self.bot.get_channel(Configuration.get_var(guild.id, f"MOD_CHANNEL"))
-        if channel is not None:
-            await channel.send(Configuration.get_var(guild.id, f"RAID_{kind}_MESSAGE"))
+        tracker = self.trackers[guild_id]
+
+        # start tracking
+        tracker.append(member)
+
+        # is there a raid going on?
+        if guild_id in self.under_raid:
+            await self._handle_raider(member)
         else:
-            Logging.warn(f"Unable to sound the {kind} in {guild.name} ({guild.id})")
+            # do we have 5 people who in the last 3 seconds or 10 in 60 maybe??
+            now = datetime.utcfromtimestamp(time.time())
+            if len(tracker) >= 2 and (now - tracker[-2].joined_at).seconds <= 30 or \
+                    len(tracker) >= 10 and (now - tracker[-10].joined_at).seconds <= 60:
+                await self._sound_the_alarm(member.guild)
+
+        await asyncio.sleep(60)
+
+        # don't release anyone until the raid is over
+        while guild_id in self.under_raid:
+            await asyncio.sleep(1)
+        tracker.remove(member)
+
+    async def _handle_raider(self, member):
+        guild_id = member.guild.id
+        raid_info = self.under_raid[guild_id]
+        raid_info["raiders"].append({
+            "user_id": member.id,
+            "user_name": str(member),
+            "joined_at": str(member.joined_at)
+        })
+        raid_info["TODO"].append(member)
+        await self.mute(member)
+
+    async def _sound_the_alarm(self, guild):
+        Logging.info(f"Sounding the alarm for {guild} ({guild.id})!")
+        guild_id = guild.id
+
+        # apply alarm, grab id later reference
+        raid_id = self.last_raid = self.last_raid + 1
+        with open("raids/counter", "w") as file:
+            file.write(str(raid_id))
+        self.under_raid[guild_id] = {
+            "ID": raid_id,
+            "guild": guild_id,
+            "raiders": [],
+            "message": None,
+            "TODO": []
+        }
+
+        channel = self.bot.get_channel(Configuration.get_var(guild_id, f"MOD_CHANNEL"))
+        if channel is not None:
+            await channel.send(Configuration.get_var(guild_id, f"RAID_ALARM_MESSAGE"))
+            await self.send_dash(channel, self.under_raid[guild_id])
+
+        else:
+            Logging.warn(f"Unable to sound the alarm in {guild.name} ({guild_id})")
             await guild.owner.send(
-                f"🚨 Anti-raid {kind} triggered for {guild.name} but the mod channel is misconfigured 🚨")
-        if kind == "ALARM":
-            for m in self.trackers[kind][guild.id]:
-                await self.mute(m)
+                f"🚨 Anti-raid alarm triggered for {guild.name} but the mod channel is misconfigured, please use ``!status`` somewhere in that server to get the raid status 🚨")
+
+        # deal with current raiders
+        for raider in self.trackers[guild.id]:
+            await self._handle_raider(raider)
+
+        self.bot.loop.create_task(self._alarm_checker(guild))
+
+    async def _alarm_checker(self, guild):
+        guild_id = guild.id
+        tracker = self.trackers[guild_id]
+        while guild_id in self.under_raid:
+            now = datetime.utcfromtimestamp(time.time())
+            # lift alarm when there are no new joins for 2 mins
+            if (now - tracker[-1].joined_at).seconds >= 30:
+                raid_info = self.under_raid[guild_id]
+                Utils.save_to_disk(f"raids/{raid_info['ID']}", {k: v for k, v in raid_info.items() if k not in ["message", "TODO"]})
+                Logging.info(f"Lifted alarm in {guild}")
+                del self.under_raid[guild_id]
+                channel = self.bot.get_channel(Configuration.get_var(guild_id, f"MOD_CHANNEL"))
+                if channel is not None:
+                    total = len(raid_info['raiders'])
+                    left = len(raid_info["TODO"])
+                    handled = total - left
+                    await channel.send(f"Raid party is over :( Guess i'm done handing out special roles (for now).\n**Summary:**\nRaid ID: {raid_info['ID']}\n{total} guests showed up for the party\n{left} are still hanging out, enjoying that oh so special role they got\n{handled} are no longer with us.")
+            else:
+                await self._update_status(guild_id)
+                asyncio.sleep(1)
+
+
+    async def _update_status(self, guild):
+        raid_info = self.under_raid[guild]
+        await raid_info["message"].edit(content=self._get_message(raid_info))
+
+
+    async def send_dash(self, channel, raid_info):
+        message = await channel.send(self._get_message(raid_info))
+        raid_info["message"] = message
+        await message.add_reaction("🚪")
+        await message.add_reaction("👢")
+        await message.add_reaction("✖")
+        return message
+
+
+
+    def _get_message(self, raid_info):
+        # assemble current status
+        total = len(raid_info['raiders'])
+        current = len(raid_info['TODO'])
+        past = total - current
+        return f"Total raiders: {total}\nRaiders already handled: {past}\nRaiders locked in for mod actions: {current}"
 
     async def mute(self, member):
         role = member.guild.get_role(Configuration.get_var(member.guild.id, "MUTE_ROLE"))
@@ -147,6 +237,22 @@ class Moderation:
             await member.kick(reason="Bad username")
             if channel is not None:
                 await channel.send(f"Kicked {member} (``{member.id}``) for having a bad username")
+
+    @commands.command()
+    async def status(self, ctx):
+        if ctx.guild.id in self.under_raid:
+            await ctx.send("This server is being raided, everyone who joins now gets a special role and thrown into the report pool! :D")
+            await self.send_dash(ctx, self.under_raid[ctx.guild.id])
+        else:
+            await ctx.send("I'm bored, there is no raid going on atm :(")
+
+
+    async def on_reaction_add(self, reaction, user):
+        guild_id = reaction.message.guild.id
+        if guild_id in self.under_raid:
+            raid_message = self.under_raid[guild_id]["message"]
+            if reaction.message.id == raid_message.id:
+                pass
 
 
 def setup(bot):
