@@ -18,6 +18,7 @@ class Moderation:
         self.under_raid = dict()
         self.bad_names = []
         self.load_bad_names()
+        self.raid_timeout = 120
         # all raid info
         if not os.path.isdir("raids"):
             os.mkdir("raids")
@@ -130,12 +131,18 @@ class Moderation:
     async def _handle_raider(self, member):
         guild_id = member.guild.id
         raid_info = self.under_raid[guild_id]
+        channel = self._get_mod_channel(member.guild.id)
+        if channel is not None and len(raid_info["TODO"]) is 0:
+            if len(raid_info["raiders"]) > 0:
+                await channel.send("New raid group detected!")
+            raid_info["message"] = await self.send_dash(channel, self.under_raid[guild_id])
         raid_info["raiders"].append({
             "user_id": member.id,
             "user_name": str(member),
             "joined_at": str(member.joined_at)
         })
         raid_info["TODO"].append(member)
+        raid_info["LAST_JOIN"] = member.joined_at
         await self.mute(member)
 
     async def _sound_the_alarm(self, guild):
@@ -151,13 +158,13 @@ class Moderation:
             "guild": guild_id,
             "raiders": [],
             "message": None,
-            "TODO": []
+            "TODO": [],
+            "LAST_JOIN": datetime.utcfromtimestamp(time.time())
         }
 
         channel = self.bot.get_channel(Configuration.get_var(guild_id, f"MOD_CHANNEL"))
         if channel is not None:
             await channel.send(Configuration.get_var(guild_id, f"RAID_ALARM_MESSAGE"))
-            await self.send_dash(channel, self.under_raid[guild_id])
 
         else:
             Logging.warn(f"Unable to sound the alarm in {guild.name} ({guild_id})")
@@ -176,20 +183,26 @@ class Moderation:
         while guild_id in self.under_raid:
             now = datetime.utcfromtimestamp(time.time())
             # lift alarm when there are no new joins for 2 mins
-            if (now - tracker[-1].joined_at).seconds >= 30:
-                raid_info = self.under_raid[guild_id]
-                Utils.save_to_disk(f"raids/{raid_info['ID']}", {k: v for k, v in raid_info.items() if k not in ["message", "TODO"]})
-                Logging.info(f"Lifted alarm in {guild}")
-                del self.under_raid[guild_id]
-                channel = self.bot.get_channel(Configuration.get_var(guild_id, f"MOD_CHANNEL"))
-                if channel is not None:
-                    total = len(raid_info['raiders'])
-                    left = len(raid_info["TODO"])
-                    handled = total - left
-                    await channel.send(f"Raid party is over :( Guess i'm done handing out special roles (for now).\n**Summary:**\nRaid ID: {raid_info['ID']}\n{total} guests showed up for the party\n{left} are still hanging out, enjoying that oh so special role they got\n{handled} are no longer with us.")
+            if (now - tracker[-1].joined_at).seconds >= self.raid_timeout:
+                await self._terminate_raid(guild)
             else:
                 await self._update_status(guild_id)
-                asyncio.sleep(1)
+                asyncio.sleep(10)
+
+    async def _terminate_raid(self, guild):
+        guild_id = guild.id
+        raid_info = self.under_raid[guild_id]
+        Utils.save_to_disk(f"raids/{raid_info['ID']}",
+                           {k: v for k, v in raid_info.items() if k not in ["message", "TODO", "LAST_JOIN"]})
+        Logging.info(f"Lifted alarm in {guild}")
+        del self.under_raid[guild_id]
+        channel = self._get_mod_channel(guild_id)
+        if channel is not None:
+            total = len(raid_info['raiders'])
+            left = len(raid_info["TODO"])
+            handled = total - left
+            await channel.send(
+                f"Raid party is over :( Guess i'm done handing out special roles (for now).\n**Summary:**\nRaid ID: {raid_info['ID']}\n{total} guests showed up for the party\n{left} are still hanging out, enjoying that oh so special role they got\n{handled} are no longer with us.")
 
 
     async def _update_status(self, guild):
@@ -212,7 +225,9 @@ class Moderation:
         total = len(raid_info['raiders'])
         current = len(raid_info['TODO'])
         past = total - current
-        return f"Total raiders: {total}\nRaiders already handled: {past}\nRaiders locked in for mod actions: {current}"
+        now = datetime.utcfromtimestamp(time.time())
+        remaining = self.raid_timeout - (now - raid_info["LAST_JOIN"]).seconds
+        return f"Total raiders: {total}\nRaiders already handled: {past}\nRaiders locked in for mod actions: {current}\nTime until alarm reset: {remaining} seconds"
 
     async def mute(self, member):
         role = member.guild.get_role(Configuration.get_var(member.guild.id, "MUTE_ROLE"))
@@ -249,13 +264,73 @@ class Moderation:
         else:
             await ctx.send("I'm bored, there is no raid going on atm :(")
 
+    async def ban_all_raiders(self, channel):
+        guild_id = channel.guild.id
+        raid_info = self.under_raid[guild_id]
+        # turn into objects just in case some left already so we can't fail that way and store in new list
+        # so we don't get concurrent modification issues if new people join
+        targets = [discord.Object(m.id) for m in raid_info["TODO"]]
+        raid_info["TODO"] = []
+        failures = []
+        message = await channel.send("Showing raiders the door...")
+        for target in targets:
+            try:
+                await channel.guild.ban(target, reason=f"Raid cleanup, raid ID: {raid_info['ID']}")
+            except discord.DiscordException as ex:
+                failures.append(target.id)
+        await message.edit(content=f"Banned {len(targets) - len(failures)} raiders\nFailed to ban {len(failures)} raiders")
+        if len(failures) > 0:
+            test = '\n'
+            for page in Utils.paginate(f"🚫 I failed to ban the following users:\n{test.join(failures)}"):
+                await channel.send(page)
+
+
+
+    async def kick_all_raiders(self, channel):
+        guild_id = channel.guild.id
+        raid_info = self.under_raid[guild_id]
+        #grab just IDs so we can grab the members to check if they are even still here
+        targets = [m.id for m in raid_info["TODO"]]
+        raid_info["TODO"] = []
+        failures = []
+        left = 0
+        message = await channel.send("Grabbing my boots...")
+        for target in targets:
+            try:
+                member = channel.guild.get_member(target)
+                if member is not None:
+                    await member.kick(reason=f"Raid cleanup, raid ID: {raid_info['ID']}")
+                else:
+                    left += 1
+            except discord.HTTPException:
+                failures.append(target)
+        await message.edit(
+            content=f"Banned {len(targets) - len(failures)} raiders\nFailed to boot {len(failures)} raiders\n{left} ")
+        if len(failures) > 0:
+            test = '\n'
+            for page in Utils.paginate(f"🚫 I failed to ban the following users:\n{test.join(failures)}"):
+                await channel.send(page)
+
+
+    async def dismiss_raid(self, channel):
+        pass
+
+
+    def _get_mod_channel(self, guild):
+        return self.bot.get_channel(Configuration.get_var(guild, f"MOD_CHANNEL"))
 
     async def on_reaction_add(self, reaction, user):
+        responses = {
+            "🚪": self.ban_all_raiders,
+            "👢": self.kick_all_raiders,
+            "✖": self.dismiss_raid
+        }
         guild_id = reaction.message.guild.id
         if guild_id in self.under_raid:
             raid_message = self.under_raid[guild_id]["message"]
-            if reaction.message.id == raid_message.id:
-                pass
+            if reaction.message.id == raid_message.id and user.id != self.bot.user.id:
+                if reaction.emoji in responses:
+                    await responses[reaction.emoji](reaction.message.channel)
 
 
 def setup(bot):
