@@ -233,10 +233,13 @@ class Moderation:
                 await member.edit(nick="Squeaky clean")
         name = member.name.lower()
         if any(bad in name for bad in self.bad_names):
-            channel = self.bot.get_channel(Configuration.get_var(member.guild.id, "ACTION_CHANNEL"))
-            await member.kick(reason="Bad username")
-            if channel is not None:
-                await channel.send(f"Kicked {member} (``{member.id}``) for having a bad username")
+            for guild in self.bot.guilds:
+                real_member = guild.get_member(member.id)
+                if real_member is not None:
+                    channel = self.bot.get_channel(Configuration.get_var(guild.id, "ACTION_CHANNEL"))
+                    await real_member.kick(reason="Bad username")
+                    if channel is not None:
+                        await channel.send(f"Kicked {member} (``{member.id}``) for having a bad username")
 
     @commands.command()
     async def status(self, ctx):
