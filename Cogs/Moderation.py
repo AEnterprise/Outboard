@@ -117,7 +117,7 @@ class Moderation:
         else:
             # do we have 5 people who in the last 3 seconds or 10 in 60 maybe??
             now = datetime.utcfromtimestamp(time.time())
-            if len(tracker) >= 2 and (now - tracker[-2].joined_at).seconds <= 30 or \
+            if len(tracker) >= 5 and (now - tracker[-5].joined_at).seconds <= 30 or \
                     len(tracker) >= 10 and (now - tracker[-10].joined_at).seconds <= 60:
                 await self._sound_the_alarm(member.guild)
 
