@@ -141,7 +141,7 @@ class Moderation:
             "joined_at": str(member.joined_at),
             "state": "muted"
         }
-        raid_info["TODO"].append(member)
+        raid_info["TODO"].append(member.id)
         raid_info["LAST_JOIN"] = member.joined_at
         await self.mute(member)
 
@@ -190,7 +190,7 @@ class Moderation:
                 await self._terminate_raid(guild)
             else:
                 await self._update_status(guild_id)
-                asyncio.sleep(10)
+                await asyncio.sleep(2)
 
     async def _terminate_raid(self, guild):
         guild_id = guild.id
@@ -214,7 +214,8 @@ class Moderation:
 
     async def _update_status(self, guild):
         raid_info = self.under_raid[guild]
-        await raid_info["MESSAGE"].edit(content=self._get_message(raid_info))
+        if raid_info["MESSAGE"] is not None:
+            await raid_info["MESSAGE"].edit(content=self._get_message(raid_info))
 
     async def send_dash(self, channel, raid_info):
         message = await channel.send(self._get_message(raid_info))
@@ -272,14 +273,14 @@ class Moderation:
     async def ban_all_raiders(self, channel, raid_info):
         # turn into objects just in case some left already so we can't fail that way and store in new list
         # so we don't get concurrent modification issues if new people join
-        targets = [discord.Object(m.id) for m in raid_info["TODO"]]
+        targets = [discord.Object(m) for m in raid_info["TODO"]]
         raid_info["TODO"] = []
         failures = []
         message = await channel.send("Showing raiders the door...")
         for target in targets:
             try:
                 await channel.guild.ban(target, reason=f"Raid cleanup, raid ID: {raid_info['ID']}")
-                raid_info[str(target.id)]["state"] = "Banned"
+                raid_info["RAIDERS"][str(target.id)]["state"] = "banned"
             except discord.DiscordException as ex:
                 failures.append(str(target.id))
         await message.edit(
@@ -291,7 +292,7 @@ class Moderation:
 
     async def kick_all_raiders(self, channel, raid_info):
         # grab just IDs so we can grab the members to check if they are even still here
-        targets = [m.id for m in raid_info["TODO"]]
+        targets = [m for m in raid_info["TODO"]]
         raid_info["TODO"] = []
         failures = []
         left = 0
@@ -301,7 +302,7 @@ class Moderation:
                 member = channel.guild.get_member(target)
                 if member is not None:
                     await member.kick(reason=f"Raid cleanup, raid ID: {raid_info['ID']}")
-                    raid_info[str(target)]["state"] = "Kicked"
+                    raid_info["RAIDERS"][str(target)]["state"] = "Kicked"
                 else:
                     left += 1
             except discord.HTTPException:
@@ -315,7 +316,7 @@ class Moderation:
 
     async def dismiss_raid(self, channel, raid_info):
         await channel.send("That wasn't a raid? Sorry about that, turning off the alarms")
-        targets = [m.id for m in raid_info["TODO"]]
+        targets = [m for m in raid_info["TODO"]]
         failures = []
         # terminate raid
         if channel.guild.id in self.under_raid:
@@ -423,7 +424,7 @@ class Moderation:
     async def raid_act_ban(self, ctx, raid_info: RaidInfo):
         async def yes():
             # targeting all raiders
-            raid_info["TODO"] = [discord.Object(int(id)) for id in raid_info["RAIDERS"].keys()]
+            raid_info["TODO"] = [int(id) for id in raid_info["RAIDERS"].keys()]
             await self.ban_all_raiders(ctx.channel, raid_info)
             self._save_raid(raid_info)
 
@@ -435,7 +436,7 @@ class Moderation:
     async def raid_act_kick(self, ctx, raid_info: RaidInfo):
         async def yes():
             # targeting all raiders
-            raid_info["TODO"] = [discord.Object(int(id)) for id in raid_info["RAIDERS"].keys()]
+            raid_info["TODO"] = [int(id) for id in raid_info["RAIDERS"].keys()]
             await self.kick_all_raiders(ctx.channel, raid_info)
             self._save_raid(raid_info)
 
@@ -447,7 +448,7 @@ class Moderation:
     async def raid_act_dismiss(self, ctx, raid_info: RaidInfo):
         async def yes():
             # targeting all raiders
-            raid_info["TODO"] = [discord.Object(int(id)) for id in raid_info["RAIDERS"].keys()]
+            raid_info["TODO"] = [int(id) for id in raid_info["RAIDERS"].keys()]
             await self.dismiss_raid(ctx.channel, raid_info)
             self._save_raid(raid_info)
 
