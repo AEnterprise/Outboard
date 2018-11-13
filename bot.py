@@ -28,7 +28,7 @@ async def on_ready():
                 bot.load_extension("Cogs." + e)
             except Exception as ex:
                 Logging.error(f"Failed to load cog {e}")
-                await handle_exception("Loading cog {e}", ex)
+                await handle_exception(f"Loading cog {e}", ex)
         Logging.info("Cogs loaded")
         await Logging.bot_log("Outboard engine running at full speed!")
         STARTED = True

@@ -8,7 +8,7 @@ from discord.ext import commands
 from discord.ext.commands import MemberConverter, BadArgument, Greedy
 
 from Util import Utils, Confirmation, Configuration, Logging
-from Util.Converters import PotentialID, Reason
+from Util.Converters import PotentialID, Reason, RaidInfo
 
 
 class Moderation:
@@ -133,14 +133,14 @@ class Moderation:
         raid_info = self.under_raid[guild_id]
         channel = self._get_mod_channel(member.guild.id)
         if channel is not None and len(raid_info["TODO"]) is 0:
-            if len(raid_info["raiders"]) > 0:
+            if len(raid_info["RAIDERS"]) > 0:
                 await channel.send("New raid group detected!")
-            raid_info["message"] = await self.send_dash(channel, self.under_raid[guild_id])
-        raid_info["raiders"].append({
-            "user_id": member.id,
+            raid_info["MESSAGE"] = await self.send_dash(channel, self.under_raid[guild_id])
+        raid_info["RAIDERS"][str(member.id)] = {
             "user_name": str(member),
-            "joined_at": str(member.joined_at)
-        })
+            "joined_at": str(member.joined_at),
+            "state": "muted"
+        }
         raid_info["TODO"].append(member)
         raid_info["LAST_JOIN"] = member.joined_at
         await self.mute(member)
@@ -153,13 +153,16 @@ class Moderation:
         raid_id = self.last_raid = self.last_raid + 1
         with open("raids/counter", "w") as file:
             file.write(str(raid_id))
+            now = datetime.utcfromtimestamp(time.time())
         self.under_raid[guild_id] = {
             "ID": raid_id,
-            "guild": guild_id,
-            "raiders": [],
-            "message": None,
+            "GUILD": guild_id,
+            "RAIDERS": {},
+            "MESSAGE": None,
             "TODO": [],
-            "LAST_JOIN": datetime.utcfromtimestamp(time.time())
+            "LAST_JOIN": now,
+            "DETECTED": str(now),
+            "ENDED": "NOT YET"
         }
 
         channel = self.bot.get_channel(Configuration.get_var(guild_id, f"MOD_CHANNEL"))
@@ -192,37 +195,38 @@ class Moderation:
     async def _terminate_raid(self, guild):
         guild_id = guild.id
         raid_info = self.under_raid[guild_id]
-        Utils.save_to_disk(f"raids/{raid_info['ID']}",
-                           {k: v for k, v in raid_info.items() if k not in ["message", "TODO", "LAST_JOIN"]})
+        raid_info["ENDED"] = str(datetime.utcfromtimestamp(time.time()))
+        self._save_raid(raid_info)
         Logging.info(f"Lifted alarm in {guild}")
         del self.under_raid[guild_id]
         channel = self._get_mod_channel(guild_id)
         if channel is not None:
-            total = len(raid_info['raiders'])
+            total = len(raid_info['RAIDERS'])
             left = len(raid_info["TODO"])
             handled = total - left
             await channel.send(
                 f"Raid party is over :( Guess i'm done handing out special roles (for now).\n**Summary:**\nRaid ID: {raid_info['ID']}\n{total} guests showed up for the party\n{left} are still hanging out, enjoying that oh so special role they got\n{handled} are no longer with us.")
 
+    @staticmethod
+    def _save_raid(raid_info):
+        Utils.save_to_disk(f"raids/{raid_info['ID']}",
+                           {k: v for k, v in raid_info.items() if k not in ["MESSAGE", "TODO", "LAST_JOIN"]})
 
     async def _update_status(self, guild):
         raid_info = self.under_raid[guild]
-        await raid_info["message"].edit(content=self._get_message(raid_info))
-
+        await raid_info["MESSAGE"].edit(content=self._get_message(raid_info))
 
     async def send_dash(self, channel, raid_info):
         message = await channel.send(self._get_message(raid_info))
-        raid_info["message"] = message
+        raid_info["MESSAGE"] = message
         await message.add_reaction("🚪")
         await message.add_reaction("👢")
         await message.add_reaction("✖")
         return message
 
-
-
     def _get_message(self, raid_info):
         # assemble current status
-        total = len(raid_info['raiders'])
+        total = len(raid_info['RAIDERS'])
         current = len(raid_info['TODO'])
         past = total - current
         now = datetime.utcfromtimestamp(time.time())
@@ -259,14 +263,13 @@ class Moderation:
     @commands.command()
     async def status(self, ctx):
         if ctx.guild.id in self.under_raid:
-            await ctx.send("This server is being raided, everyone who joins now gets a special role and thrown into the report pool! :D")
+            await ctx.send(
+                "This server is being raided, everyone who joins now gets a special role and thrown into the report pool! :D")
             await self.send_dash(ctx, self.under_raid[ctx.guild.id])
         else:
             await ctx.send("I'm bored, there is no raid going on atm :(")
 
-    async def ban_all_raiders(self, channel):
-        guild_id = channel.guild.id
-        raid_info = self.under_raid[guild_id]
+    async def ban_all_raiders(self, channel, raid_info):
         # turn into objects just in case some left already so we can't fail that way and store in new list
         # so we don't get concurrent modification issues if new people join
         targets = [discord.Object(m.id) for m in raid_info["TODO"]]
@@ -276,20 +279,18 @@ class Moderation:
         for target in targets:
             try:
                 await channel.guild.ban(target, reason=f"Raid cleanup, raid ID: {raid_info['ID']}")
+                raid_info[str(target.id)]["state"] = "Banned"
             except discord.DiscordException as ex:
-                failures.append(target.id)
-        await message.edit(content=f"Banned {len(targets) - len(failures)} raiders\nFailed to ban {len(failures)} raiders")
+                failures.append(str(target.id))
+        await message.edit(
+            content=f"Banned {len(targets) - len(failures)} raiders\nFailed to ban {len(failures)} raiders")
         if len(failures) > 0:
             test = '\n'
             for page in Utils.paginate(f"🚫 I failed to ban the following users:\n{test.join(failures)}"):
                 await channel.send(page)
 
-
-
-    async def kick_all_raiders(self, channel):
-        guild_id = channel.guild.id
-        raid_info = self.under_raid[guild_id]
-        #grab just IDs so we can grab the members to check if they are even still here
+    async def kick_all_raiders(self, channel, raid_info):
+        # grab just IDs so we can grab the members to check if they are even still here
         targets = [m.id for m in raid_info["TODO"]]
         raid_info["TODO"] = []
         failures = []
@@ -300,21 +301,159 @@ class Moderation:
                 member = channel.guild.get_member(target)
                 if member is not None:
                     await member.kick(reason=f"Raid cleanup, raid ID: {raid_info['ID']}")
+                    raid_info[str(target)]["state"] = "Kicked"
                 else:
                     left += 1
             except discord.HTTPException:
-                failures.append(target)
+                failures.append(str(target))
         await message.edit(
-            content=f"Banned {len(targets) - len(failures)} raiders\nFailed to boot {len(failures)} raiders\n{left} ")
+            content=f"Kicked {len(targets) - len(failures)} raiders\nFailed to boot {len(failures)} raiders\n{left} Already left")
         if len(failures) > 0:
             test = '\n'
-            for page in Utils.paginate(f"🚫 I failed to ban the following users:\n{test.join(failures)}"):
+            for page in Utils.paginate(f"🚫 I failed to kick the following users:\n{test.join(failures)}"):
                 await channel.send(page)
 
+    async def dismiss_raid(self, channel, raid_info):
+        await channel.send("That wasn't a raid? Sorry about that, turning off the alarms")
+        targets = [m.id for m in raid_info["TODO"]]
+        failures = []
+        # terminate raid
+        if channel.guild.id in self.under_raid:
+            await self._terminate_raid(channel.guild)
+        message = await channel.send("Unmuting people...")
+        # remove mute role from people who have been detected
+        for target in targets:
+            member = channel.guild.get_member(target)
+            if member is not None:
+                role = member.guild.get_role(Configuration.get_var(member.guild.id, "MUTE_ROLE"))
+                if role is not None:
+                    try:
+                        await member.remove_roles(role, reason="Raid alarm dismissed")
+                        raid_info['RAIDERS'][str(target)]["state"] = "Dismissed"
+                    except discord.HTTPException:
+                        failures.append(str(target))
+        await channel.send(f"{len(targets) - len(failures)} have been unmuted")
+        if len(failures) > 0:
+            people = '\n'.join(failures)
+            out = f"Failed to unmute the following people:\n{people}"
+            for page in Utils.paginate(out):
+                await channel.send(page)
 
-    async def dismiss_raid(self, channel):
+    @commands.command()
+    async def test(self, ctx):
+        if ctx.guild.id not in self.trackers:
+            self.trackers[ctx.guild.id] = list()
+        tracker = self.trackers[ctx.guild.id]
+
+        # start tracking
+        tracker.append(ctx.author)
+        await self._sound_the_alarm(ctx.guild)
+
+    @commands.group("raid_info")
+    async def raid_info(self, ctx):
+        if ctx.invoked_subcommand == self.raid_info:
+            await ctx.send("Base command for getting raid info, pls use one of the subcommands: 'raw', 'ids', 'pretty'")
+
+    @raid_info.command("raw")
+    async def raid_info_raw(self, ctx, raid_info: RaidInfo):
+        raid_id = raid_info["ID"]
+        with open(f"raids/{raid_id}.json", "rb") as file:
+            await ctx.send(f"Raw raid data for raid {raid_id}:", file=discord.File(file, f"raid_{raid_id}.json"))
+
+    @raid_info.command("ids")
+    async def raid_info_ids(self, ctx, raid_info: RaidInfo):
+        # just print out the ids
+        raid_id = raid_info["ID"]
+        ids = '\n'.join(raid_info["RAIDERS"].keys())
+        message = f"User IDs of all users associated with raid {raid_id}:\n{ids}"
+        for page in Utils.paginate(message):
+            await ctx.send(page)
+
+    @raid_info.command("pretty")
+    async def raid_info_pretty(self, ctx, raid_info: RaidInfo):
+        # get longest name to keep things pretty
+        lengths = [len(info["user_name"]) for info in raid_info["RAIDERS"].values()]
+        lengths.append(20)
+        longest_name = max(lengths)
+        # pretty header with line
+        header = f"ID {' ' * 18}| Name (at that time) {' ' * (longest_name - 19)}| Joined at                  | Action taken\n"
+        text = f"{header}{'-' * len(header)} \n"
+        # add all raiders
+        for id, info in raid_info["RAIDERS"].items():
+            text += f"{Utils.pad(id, 20)} | {Utils.pad(info['user_name'], longest_name)} | {info['joined_at']} | {info['state']}\n"
+        # send all ot the printer in codeblocks
+        pages = Utils.paginate(text, prefix="```", suffix="```")
+        for page in pages:
+            await ctx.send(page)
+
+    @commands.group()
+    async def inf(self, ctx):
         pass
 
+    @inf.command()
+    async def search(self, ctx, query: str):
+        # rowboat has no clue about outboard actions, so we just print them ourselves when people search
+        try:
+            # just try to parse, it, don't care about what it is, we need the string to lookup anyways
+            int(query)
+        except ValueError:
+            # not an id, not our problem, just stay silent
+            pass
+        else:
+            # check all past raids for involvement, only reply if we find something for this guild
+            directory = os.fsencode("raids")
+            for file in os.listdir(directory):
+                filename = os.fsdecode(file)
+                if filename.endswith(".json"):
+                    raid_data = Utils.fetch_from_disk(f"raids/{filename}", "")
+                    if raid_data["GUILD"] == ctx.guild.id:
+                        if query in raid_data["RAIDERS"]:
+                            info = raid_data['RAIDERS'][query]
+                            await ctx.send(
+                                f"{query} was involved in raid {raid_data['ID']} under the name {info['user_name']} and has been {info['state']} for it")
+                    # cycle the loop just in case so we don't start timing out if we have to process a lot of raids
+                    await asyncio.sleep(0)
+
+    @commands.group()
+    async def raid_act(self, ctx):
+        if ctx.invoked_subcommand == self.raid_act:
+            await ctx.send("Please use the subcommands: 'ban', 'kick' or 'dismiss'")
+
+    @raid_act.command("ban")
+    async def raid_act_ban(self, ctx, raid_info: RaidInfo):
+        async def yes():
+            # targeting all raiders
+            raid_info["TODO"] = [discord.Object(int(id)) for id in raid_info["RAIDERS"].keys()]
+            await self.ban_all_raiders(ctx.channel, raid_info)
+            self._save_raid(raid_info)
+
+        await Confirmation.confirm(ctx,
+                                   f"Are you sure you want to ban all {len(raid_info['RAIDERS'])} raiders involved in raid {raid_info['ID']} ?",
+                                   on_yes=yes)
+
+    @raid_act.command("kick")
+    async def raid_act_kick(self, ctx, raid_info: RaidInfo):
+        async def yes():
+            # targeting all raiders
+            raid_info["TODO"] = [discord.Object(int(id)) for id in raid_info["RAIDERS"].keys()]
+            await self.kick_all_raiders(ctx.channel, raid_info)
+            self._save_raid(raid_info)
+
+        await Confirmation.confirm(ctx,
+                                   f"Are you sure you want to kick all {len(raid_info['RAIDERS'])} raiders involved in raid {raid_info['ID']} ?",
+                                   on_yes=yes)
+
+    @raid_act.command("dismiss")
+    async def raid_act_dismiss(self, ctx, raid_info: RaidInfo):
+        async def yes():
+            # targeting all raiders
+            raid_info["TODO"] = [discord.Object(int(id)) for id in raid_info["RAIDERS"].keys()]
+            await self.dismiss_raid(ctx.channel, raid_info)
+            self._save_raid(raid_info)
+
+        await Confirmation.confirm(ctx,
+                                   f"Are you sure you want to dismiss raid {raid_info['ID']} and unmute all {len(raid_info['RAIDERS'])} raiders ?",
+                                   on_yes=yes)
 
     def _get_mod_channel(self, guild):
         return self.bot.get_channel(Configuration.get_var(guild, f"MOD_CHANNEL"))
@@ -327,10 +466,12 @@ class Moderation:
         }
         guild_id = reaction.message.guild.id
         if guild_id in self.under_raid:
-            raid_message = self.under_raid[guild_id]["message"]
+            raid_info = self.under_raid[guild_id]
+            raid_message = raid_info["MESSAGE"]
             if reaction.message.id == raid_message.id and user.id != self.bot.user.id:
                 if reaction.emoji in responses:
-                    await responses[reaction.emoji](reaction.message.channel)
+                    raid_info["MESSAGE"] = None
+                    await responses[reaction.emoji](reaction.message.channel, raid_info)
 
 
 def setup(bot):

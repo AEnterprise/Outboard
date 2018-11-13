@@ -3,15 +3,12 @@ import json
 import os
 import subprocess
 from subprocess import Popen
-
-from discord import NotFound
-
 from Util import Logging
 
 
-def fetch_from_disk(filename, alternative=None):
+def fetch_from_disk(filename, extension=".json", alternative=None):
     try:
-        with open(f"{filename}.json") as file:
+        with open(f"{filename}{extension}") as file:
             return json.load(file)
     except FileNotFoundError:
         if alternative is not None:
@@ -75,3 +72,7 @@ def paginate(input, max_lines=20, max_chars=1900, prefix="", suffix=""):
         count += 1
     pages.append(f"{prefix}{page}{suffix}")
     return pages
+
+
+def pad(text, length, char=' '):
+    return f"{text}{char * (length-len(text))}"

@@ -1,3 +1,4 @@
+import os
 import re
 
 from discord.ext import commands
@@ -27,3 +28,20 @@ class Reason(commands.Converter):
         for match in EMOJI_MATCHER.finditer(argument):
             argument = argument.replace(match.group(0), f":{match.group(1)}:")
         return argument
+
+
+class RaidInfo(commands.Converter):
+    async def convert(self, ctx, argument):
+        try:
+            argument = int(argument)
+        except ValueError:
+            raise commands.BadArgument(f"Raid IDs are numbers, \"{argument}\" isn't")
+        else:
+            if os.path.isfile(f"raids/{argument}.json"):
+                raid_info = Utils.fetch_from_disk(f"raids/{argument}")
+                if raid_info["GUILD"] == ctx.guild.id:
+                    return raid_info
+                else:
+                    raise commands.BadArgument(f"Raid {argument} did not take place on this server, pls request the raid info from that server instead.")
+            else:
+                raise commands.BadArgument("Not a valid raid ID")
