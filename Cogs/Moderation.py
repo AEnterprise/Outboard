@@ -392,7 +392,9 @@ class Moderation:
         pass
 
     @inf.command()
-    async def search(self, ctx, query: str):
+    async def search(self, ctx, query: str = None):
+        if query is None:
+            return
         # rowboat has no clue about outboard actions, so we just print them ourselves when people search
         try:
             # just try to parse, it, don't care about what it is, we need the string to lookup anyways
