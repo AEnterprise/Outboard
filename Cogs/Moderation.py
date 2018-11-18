@@ -365,7 +365,7 @@ class Moderation:
     async def raid_info_ids(self, ctx, raid_info: RaidInfo):
         # just print out the ids
         raid_id = raid_info["ID"]
-        ids = '\n'.join(raid_info["RAIDERS"].keys())
+        ids = ' '.join(raid_info["RAIDERS"].keys())
         message = f"User IDs of all users associated with raid {raid_id}:\n{ids}"
         for page in Utils.paginate(message):
             await ctx.send(page)
