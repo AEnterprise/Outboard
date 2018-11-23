@@ -104,12 +104,12 @@ class Moderation:
         # grab the tracker
         guild_id = member.guild.id
         if guild_id not in self.trackers:
-            self.trackers[guild_id] = list()
+            self.trackers[guild_id] = set()
 
         tracker = self.trackers[guild_id]
 
         # start tracking
-        tracker.append(member)
+        tracker.add(member)
 
         # is there a raid going on?
         if guild_id in self.under_raid:
@@ -339,16 +339,6 @@ class Moderation:
             out = f"Failed to unmute the following people:\n{people}"
             for page in Utils.paginate(out):
                 await channel.send(page)
-
-    @commands.command()
-    async def test(self, ctx):
-        if ctx.guild.id not in self.trackers:
-            self.trackers[ctx.guild.id] = list()
-        tracker = self.trackers[ctx.guild.id]
-
-        # start tracking
-        tracker.append(ctx.author)
-        await self._sound_the_alarm(ctx.guild)
 
     @commands.group("raid_info")
     async def raid_info(self, ctx):
