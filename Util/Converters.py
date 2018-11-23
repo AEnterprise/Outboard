@@ -39,9 +39,6 @@ class RaidInfo(commands.Converter):
         else:
             if os.path.isfile(f"raids/{argument}.json"):
                 raid_info = Utils.fetch_from_disk(f"raids/{argument}")
-                if raid_info["GUILD"] == ctx.guild.id:
-                    return raid_info
-                else:
-                    raise commands.BadArgument(f"Raid {argument} did not take place on this server, pls request the raid info from that server instead.")
+                return raid_info
             else:
                 raise commands.BadArgument("Not a valid raid ID")
