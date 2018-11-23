@@ -1,6 +1,7 @@
 import asyncio
 import os
 import time
+from collections import deque
 from datetime import datetime
 
 import discord
@@ -18,6 +19,7 @@ class Moderation:
         self.under_raid = dict()
         self.bad_names = []
         self.load_bad_names()
+        self.kick_trackers = dict()
         self.raid_timeout = 120
         # all raid info
         if not os.path.isdir("raids"):
@@ -257,9 +259,24 @@ class Moderation:
                 real_member = guild.get_member(member.id)
                 if real_member is not None:
                     channel = self.bot.get_channel(Configuration.get_var(guild.id, "ACTION_CHANNEL"))
-                    await real_member.kick(reason="Bad username")
+
+                    # track selfbots and others who don't get the hint
+                    if guild.id not in self.kick_trackers:
+                        self.kick_trackers[guild.id] = deque(maxlen=10)
+                    tracker = self.kick_trackers[guild.id]
+                    tracker.append(member.id)
+                    # boot them out, grab the hammer if they don't get the hint (or use auto-joining self-bot)
+                    if tracker.count(member.id) >= 5:
+                        await real_member.ban(Reason="Too many bad names, didn't get the hint")
+                        message = f"Banned {member} ({member.id}) as they kept returning with a bad name"
+                    else:
+                        await real_member.kick(reason="Bad username")
+                        message = f"Kicked {member} (``{member.id}``) for having a bad username"
                     if channel is not None:
-                        await channel.send(f"Kicked {member} (``{member.id}``) for having a bad username")
+                        await channel.send(message)
+
+
+
 
     @commands.command()
     async def status(self, ctx):
