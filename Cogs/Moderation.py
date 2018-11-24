@@ -106,12 +106,13 @@ class Moderation:
         # grab the tracker
         guild_id = member.guild.id
         if guild_id not in self.trackers:
-            self.trackers[guild_id] = set()
+            self.trackers[guild_id] = list()
 
         tracker = self.trackers[guild_id]
 
         # start tracking
-        tracker.add(member)
+        if member not in tracker:
+            tracker.append(member)
 
         # is there a raid going on?
         if guild_id in self.under_raid:
