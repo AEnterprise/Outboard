@@ -1,7 +1,6 @@
 import asyncio
 import os
 import time
-from collections import deque
 from datetime import datetime
 
 import discord
@@ -29,6 +28,12 @@ class Moderation:
         # load last raid id
         with open("raids/counter") as file:
             self.last_raid = int(file.read())
+
+        self.actions = {
+            "🚪": self.ban_all_raiders,
+            "👢": self.kick_all_raiders,
+            "✖": self.dismiss_raid
+        }
 
     async def __local_check(self, ctx):
         return ctx.author.guild_permissions.ban_members
@@ -90,7 +95,6 @@ class Moderation:
 
     async def on_member_join(self, member: discord.Member):
         self.bot.loop.create_task(self._track(member))
-        await self.check_name(member)
 
     async def _track(self, member):
         # grab the tracker
@@ -134,7 +138,8 @@ class Moderation:
             "joined_at": str(member.joined_at),
             "state": "muted"
         }
-        raid_info["TODO"].append(member.id)
+        if member.id not in raid_info["TODO"]:
+            raid_info["TODO"].append(member.id)
         raid_info["LAST_JOIN"] = member.joined_at
         await self.mute(member)
 
@@ -226,9 +231,7 @@ class Moderation:
     async def send_dash(self, channel, raid_info):
         message = await channel.send(self._get_message(raid_info))
         raid_info["MESSAGE"] = message
-        await message.add_reaction("🚪")
-        await message.add_reaction("👢")
-        await message.add_reaction("✖")
+        await Utils.add_reactions(message, self.actions)
         return message
 
     def _get_message(self, raid_info):
@@ -445,19 +448,14 @@ class Moderation:
         return self.bot.get_channel(Configuration.get_var(guild, f"MOD_CHANNEL"))
 
     async def on_reaction_add(self, reaction, user):
-        responses = {
-            "🚪": self.ban_all_raiders,
-            "👢": self.kick_all_raiders,
-            "✖": self.dismiss_raid
-        }
         guild_id = reaction.message.guild.id
         if guild_id in self.under_raid:
             raid_info = self.under_raid[guild_id]
             raid_message = raid_info["MESSAGE"]
             if reaction.message.id == raid_message.id and user.id != self.bot.user.id:
-                if reaction.emoji in responses:
+                if reaction.emoji in self.actions:
                     raid_info["MESSAGE"] = None
-                    await responses[reaction.emoji](reaction.message.channel, raid_info)
+                    await self.actions[reaction.emoji](reaction.message.channel, raid_info)
 
 
 def setup(bot):

@@ -27,6 +27,7 @@ def v4(config):
     config["WARN_TIME"] = 5 * 60
     with open("bad_names.txt", encoding="UTF-8") as namefile:
         config["BAD_NAMES"] = [line.strip().lower() for line in namefile.readlines()]
+    return config
 
 
 # migrators for the configs, do NOT increase the version here, this is done by the migration loop

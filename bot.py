@@ -82,7 +82,7 @@ async def on_command_error(ctx: commands.Context, error):
 @bot.event
 async def on_error(event, *args, **kwargs):
     t, exception, info = sys.exc_info()
-    await handle_exception("Event handler failure", exception, event, *args, **kwargs)
+    await handle_exception("Event handler failure", exception, event, None, None, *args, **kwargs)
 
 
 def extract_info(o):

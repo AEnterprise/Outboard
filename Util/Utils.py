@@ -3,6 +3,9 @@ import json
 import os
 import subprocess
 from subprocess import Popen
+
+import discord
+
 from Util import Logging
 
 
@@ -24,7 +27,7 @@ def save_to_disk(filename, dict):
 def trim_message(message, limit):
     if len(message) < limit - 3:
         return message
-    return f"{message[:limit-3]}..."
+    return f"{message[:limit - 3]}..."
 
 
 async def clean_exit(bot, trigger):
@@ -80,4 +83,11 @@ def paginate(input, max_lines=20, max_chars=1900, prefix="", suffix=""):
 
 
 def pad(text, length, char=' '):
-    return f"{text}{char * (length-len(text))}"
+    return f"{text}{char * (length - len(text))}"
+
+
+async def add_reactions(message, info):
+    embed = discord.Embed(description="\n\n".join(f"{k}: {v.__doc__}" for k, v in info.items()))
+    for k in info:
+        await message.add_reaction(k)
+    await message.edit(content=message.content, embed=embed)
