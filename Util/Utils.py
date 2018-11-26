@@ -47,9 +47,9 @@ def clean_user(user):
 
 
 def paginate(input, max_lines=20, max_chars=1900, prefix="", suffix=""):
-    max_chars -= len(prefix) + len(suffix)
+    max_chars -= len(prefix.format(page=100, pages=100)) + len(suffix.format(page=100, pages=100))
     lines = str(input).splitlines(keepends=True)
-    pages = []
+    pages = list()
     page = ""
     count = 0
     for line in lines:
@@ -59,19 +59,24 @@ def paginate(input, max_lines=20, max_chars=1900, prefix="", suffix=""):
                 words = line.split(" ")
                 for word in words:
                     if len(page) + len(word) > max_chars:
-                        pages.append(f"{prefix}{page}{suffix}")
+                        pages.append(page)
                         page = f"{word} "
                     else:
                         page += f"{word} "
             else:
-                pages.append(f"{prefix}{page}{suffix}")
+                pages.append(page)
                 page = line
                 count = 1
         else:
             page += line
         count += 1
-    pages.append(f"{prefix}{page}{suffix}")
-    return pages
+    pages.append(page)
+    page_count = 1
+    total_pages = len(pages)
+    real_pages = list()
+    for page in pages:
+        real_pages.append(f"{prefix.format(page=page_count, pages=total_pages)}{page}{suffix.format(page=page_count, pages=total_pages)}")
+    return real_pages
 
 
 def pad(text, length, char=' '):

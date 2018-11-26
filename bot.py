@@ -23,7 +23,7 @@ async def on_ready():
         await Logging.onReady(bot, Configuration.get_master_var("BOT_LOG_CHANNEL"))
         await Configuration.on_ready(bot)
         
-        for e in ["Maintenance", "Moderation"]:
+        for e in ["Maintenance", "Moderation", "BadNames"]:
             try:
                 bot.load_extension("Cogs." + e)
             except Exception as ex:

@@ -18,7 +18,6 @@ class Moderation:
         self.trackers = dict()
         self.under_raid = dict()
         self.bad_names = []
-        self.load_bad_names()
         self.kick_trackers = dict()
         self.raid_timeout = 120
         # all raid info
@@ -33,15 +32,6 @@ class Moderation:
 
     async def __local_check(self, ctx):
         return ctx.author.guild_permissions.ban_members
-
-    def load_bad_names(self):
-        if os.path.isfile("bad_names.txt"):
-            with open("bad_names.txt", encoding="UTF-8") as namefile:
-                self.bad_names = [line.rstrip().strip() for line in namefile.readlines()]
-        else:
-            with open("bad_names.txt", "w", encoding="UTF-8") as namefile:
-                namefile.write(
-                    "PLEASE REMOVE THIS LINE AND PUT ALL NAMES TO KICK UPON JOINING HERE, ONE NAME PER LINE, CASE INSENSITIVE")
 
     @staticmethod
     def _can_act(ctx, user: discord.Member):
@@ -183,6 +173,12 @@ class Moderation:
 
         self.bot.loop.create_task(self._alarm_checker(guild))
 
+        # server has the tools the need to deal with it, notify other servers
+        for other_guild in self.bot.guilds:
+            channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
+            if channel is not None:
+                await channel.send(f"⚠ Heads up: {guild} is being raided (raid ID: {raid_id}! They might try to raid this server as well. Spoiler alert: They'll fail")
+
     async def _alarm_checker(self, guild):
         guild_id = guild.id
         tracker = self.trackers[guild_id]
@@ -195,9 +191,10 @@ class Moderation:
                 await self._update_status(guild_id)
                 await asyncio.sleep(2)
 
-    async def _terminate_raid(self, guild):
+    async def _terminate_raid(self, guild, dismised=False):
         guild_id = guild.id
         raid_info = self.under_raid[guild_id]
+        raid_id = raid_info['ID']
         raid_info["ENDED"] = str(datetime.utcfromtimestamp(time.time()))
         self._save_raid(raid_info)
         Logging.info(f"Lifted alarm in {guild}")
@@ -209,6 +206,12 @@ class Moderation:
             handled = total - left
             await channel.send(
                 f"Raid party is over :( Guess i'm done handing out special roles (for now).\n**Summary:**\nRaid ID: {raid_info['ID']}\n{total} guests showed up for the party\n{left} are still hanging out, enjoying that oh so special role they got\n{handled} are no longer with us.")
+        # notify other server if we didn't dismiss it, if we did they already got notified about the false alarm
+        if not dismised:
+            for other_guild in self.bot.guilds:
+                channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
+                if channel is not None:
+                    await channel.send(f"Raid party over at {guild} has ended (raid ID {raid_id}. If you want to cross ban now would be a great time.\nFor more info on the raid: ``!raid_info pretty {raid_id}``\nFor crossbanning: ``!raid_act ban {raid_id}``")
 
     @staticmethod
     def _save_raid(raid_info):
@@ -244,40 +247,6 @@ class Moderation:
                 await member.add_roles(role, reason="Raid alarm triggered")
             except discord.HTTPException:
                 Logging.warn(f"failed to mute {member} ({member.id}!")
-
-    async def on_member_update(self, before, after):
-        if before.nick != after.nick or before.name != after.name:
-            await self.check_name(after)
-
-    async def check_name(self, member):
-        if member.nick is not None:
-            nick = member.nick.lower()
-            if any(bad in nick for bad in self.bad_names):
-                await member.edit(nick="Squeaky clean")
-        name = member.name.lower()
-        if any(bad in name for bad in self.bad_names):
-            for guild in self.bot.guilds:
-                real_member = guild.get_member(member.id)
-                if real_member is not None:
-                    channel = self.bot.get_channel(Configuration.get_var(guild.id, "ACTION_CHANNEL"))
-
-                    # track selfbots and others who don't get the hint
-                    if guild.id not in self.kick_trackers:
-                        self.kick_trackers[guild.id] = deque(maxlen=10)
-                    tracker = self.kick_trackers[guild.id]
-                    tracker.append(member.id)
-                    # boot them out, grab the hammer if they don't get the hint (or use auto-joining self-bot)
-                    if tracker.count(member.id) >= 5:
-                        await real_member.ban(Reason="Too many bad names, didn't get the hint")
-                        message = f"Banned {member} ({member.id}) as they kept returning with a bad name"
-                    else:
-                        await real_member.kick(reason="Bad username")
-                        message = f"Kicked {member} (``{member.id}``) for having a bad username"
-                    if channel is not None:
-                        await channel.send(message)
-
-
-
 
     @commands.command()
     async def status(self, ctx):
@@ -357,6 +326,12 @@ class Moderation:
             out = f"Failed to unmute the following people:\n{people}"
             for page in Utils.paginate(out):
                 await channel.send(page)
+
+        # notify it was just a false alarm so they can stand down
+        for other_guild in self.bot.guilds:
+            channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
+            if channel is not None:
+                await channel.send(f"Raid over {channel.guild} turned out to not be an actual raid and has been dismissed. Sorry to all who worried about nothing now.")
 
     @commands.group("raid_info")
     async def raid_info(self, ctx):

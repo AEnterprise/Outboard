@@ -15,14 +15,23 @@ def v2(config):
     config["ACTION_CHANNEL"] = 0
     return config
 
+
 def v3(config):
-    for entry in ["RAID_WARNING_AMOUNT", "RAID_WARNING_TIMEFRAME", "RAID_WARNING_MESSAGE", "RAID_ALARM_AMOUNT", "RAID_ALARM_TIMEFRAME"]:
+    for entry in ["RAID_WARNING_AMOUNT", "RAID_WARNING_TIMEFRAME", "RAID_WARNING_MESSAGE", "RAID_ALARM_AMOUNT",
+                  "RAID_ALARM_TIMEFRAME"]:
         del config[entry]
     return config
 
+
+def v4(config):
+    config["WARN_TIME"] = 5 * 60
+    with open("bad_names.txt", encoding="UTF-8") as namefile:
+        config["BAD_NAMES"] = [line.strip().lower() for line in namefile.readlines()]
+
+
 # migrators for the configs, do NOT increase the version here, this is done by the migration loop
 # doubt we'll actually need the full flexibility this offers but i made it for gearbot so might as well use it to future proof this bot
-MIGRATORS = [v2, v3]
+MIGRATORS = [v2, v3, v4]
 
 
 async def on_ready(bot: commands.Bot):
@@ -73,7 +82,7 @@ def update_config(guild, config):
         if not os.path.isdir(d):
             os.makedirs(d)
         Utils.save_to_disk(f"{d}/{guild}", config)
-        config = MIGRATORS[config["VERSION"]-1](config)
+        config = MIGRATORS[config["VERSION"] - 1](config)
         config["VERSION"] += 1
         Utils.save_to_disk(f"config/{guild}", config)
 
