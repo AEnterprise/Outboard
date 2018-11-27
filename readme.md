@@ -43,7 +43,6 @@ Next to that he also is on the lookout for people with bad usernames (checks whe
 The list of bad names is separate per server.
 
 Configuring this list is done with the ``blacklist`` command.
-``blacklist show`` will print a list of everything currently on the list
 
 ``blacklist add`` will add something to the list (``!blacklist add this is an offencive name`` will add ``this is an offencive name`` to the list)
 If you later want to remove something just replace ``add`` with ``remove`` (``!blacklist remove this is an offencive name``)

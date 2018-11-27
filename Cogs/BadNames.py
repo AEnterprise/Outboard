@@ -97,15 +97,6 @@ class BadNames:
         if ctx.command == self.blacklist:
             await ctx.invoke(self.bot.get_command("help"), "blacklist")
 
-    @blacklist.command()
-    async def show(self, ctx):
-        """Show all blacklist entries"""
-        bad_names = Configuration.get_var(ctx.guild.id, "BAD_NAMES")
-        pages = Utils.paginate('\n'.join(bad_names), prefix="**Blacklist entries:**```\n", suffix="\n```")
-        # TODO: confirmation if there are too many entries? Not sure we'll ever 100+ entries
-        for page in pages:
-            await ctx.send(page)
-
     @blacklist.command("add")
     async def blacklist_add(self, ctx, *, entry: str):
         """Add a new entry to the list"""
