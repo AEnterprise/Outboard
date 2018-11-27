@@ -94,7 +94,7 @@ class BadNames:
     @commands.group()
     async def blacklist(self, ctx):
         """Base command for managing the name blacklist"""
-        if ctx.command == self.blacklist:
+        if ctx.command == self.blacklist and ctx.invoked_subcommand is None:
             await ctx.invoke(self.bot.get_command("help"), "blacklist")
 
     @blacklist.command("add")

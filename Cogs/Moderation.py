@@ -346,7 +346,7 @@ class Moderation:
     @commands.group("raid_info")
     async def raid_info(self, ctx):
         """Base command for getting info about a raid"""
-        if ctx.command == self.raid_info:
+        if ctx.command == self.raid_info and ctx.invoked_subcommand is None:
             await ctx.invoke(self.bot.get_command("help"), "raid_info")
 
     @raid_info.command("raw")
@@ -417,7 +417,7 @@ class Moderation:
     @commands.group()
     async def raid_act(self, ctx):
         """Base command for acting upon past raids, or raids from other servers on this server"""
-        if ctx.command == self.raid_act:
+        if ctx.command == self.raid_act and ctx.invoked_subcommand is None:
             await ctx.invoke(self.bot.get_command("help"), "raid_act")
 
     @raid_act.command("ban")
