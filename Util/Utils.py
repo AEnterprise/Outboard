@@ -91,3 +91,21 @@ async def add_reactions(message, info):
     for k in info:
         await message.add_reaction(k)
     await message.edit(content=message.content, embed=embed)
+
+
+def clean(text):
+    text = str(text)
+
+    for c in ("\\", "`", "*", "_", "~", "<"):
+        text = text.replace(c, f"\{c}\u200b")
+
+    # make sure we don't have funny guys/roles named "everyone" messing it all up
+    text = text.replace("@", "@\u200b")
+    return text
+
+
+async def get_username(bot, uid):
+    user = bot.get_user(uid)
+    if user is None:
+        user = await bot.get_user_info(uid)
+    return clean(user)

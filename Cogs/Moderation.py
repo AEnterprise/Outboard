@@ -53,7 +53,7 @@ class Moderation:
     @commands.command()
     @commands.bot_has_permissions(ban_members=True)
     async def mban(self, ctx, targets: Greedy[PotentialID], *, reason: Reason = ""):
-        """mban_help"""
+        """Bans multiple users with the reason provided"""
         if reason == "":
             reason = "No reason specified"
 
@@ -180,9 +180,10 @@ class Moderation:
 
         # server has the tools the need to deal with it, notify other servers
         for other_guild in self.bot.guilds:
-            channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
-            if channel is not None:
-                await channel.send(f"⚠ Heads up: {guild} is being raided (raid ID: {raid_id}! They might try to raid this server as well. Spoiler alert: They'll fail")
+            if other_guild is not guild:
+                channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
+                if channel is not None:
+                    await channel.send(f"⚠ Heads up: {guild} is being raided (raid ID: {raid_id}! They might try to raid this server as well. Spoiler alert: They'll fail")
 
     async def _alarm_checker(self, guild):
         guild_id = guild.id
@@ -253,6 +254,7 @@ class Moderation:
 
     @commands.command()
     async def status(self, ctx):
+        """Current server raid status"""
         if ctx.guild.id in self.under_raid:
             await ctx.send(
                 "This server is being raided, everyone who joins now gets a special role and thrown into the report pool! :D")
@@ -261,6 +263,7 @@ class Moderation:
             await ctx.send("I'm bored, there is no raid going on atm :(")
 
     async def ban_all_raiders(self, channel, raid_info):
+        """Ban all the raiders"""
         # turn into objects just in case some left already so we can't fail that way and store in new list
         # so we don't get concurrent modification issues if new people join
         targets = [discord.Object(m) for m in raid_info["TODO"]]
@@ -281,6 +284,7 @@ class Moderation:
                 await channel.send(page)
 
     async def kick_all_raiders(self, channel, raid_info):
+        """Kick all raiders"""
         # grab just IDs so we can grab the members to check if they are even still here
         targets = [m for m in raid_info["TODO"]]
         raid_info["TODO"] = []
@@ -305,6 +309,7 @@ class Moderation:
                 await channel.send(page)
 
     async def dismiss_raid(self, channel, raid_info):
+        """Dismiss raid as false alarm, will also remove the mute role from all of them again"""
         await channel.send("That wasn't a raid? Sorry about that, turning off the alarms")
         targets = [m for m in raid_info["TODO"]]
         failures = []
@@ -334,21 +339,24 @@ class Moderation:
         for other_guild in self.bot.guilds:
             channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
             if channel is not None:
-                await channel.send(f"Raid over {channel.guild} turned out to not be an actual raid and has been dismissed. Sorry to all who worried about nothing now.")
+                await channel.send(f"Raid over at {channel.guild} turned out to not be an actual raid and has been dismissed. Sorry to all who worried about nothing now.")
 
     @commands.group("raid_info")
     async def raid_info(self, ctx):
-        if ctx.invoked_subcommand == self.raid_info:
-            await ctx.send("Base command for getting raid info, pls use one of the subcommands: 'raw', 'ids', 'pretty'")
+        """Base command for getting info about a raid"""
+        if ctx.command == self.raid_info:
+            await ctx.invoke(self.bot.get_command("help"), "raid_info")
 
     @raid_info.command("raw")
     async def raid_info_raw(self, ctx, raid_info: RaidInfo):
+        """The raw json file"""
         raid_id = raid_info["ID"]
         with open(f"raids/{raid_id}.json", "rb") as file:
             await ctx.send(f"Raw raid data for raid {raid_id}:", file=discord.File(file, f"raid_{raid_id}.json"))
 
     @raid_info.command("ids")
     async def raid_info_ids(self, ctx, raid_info: RaidInfo):
+        """"Just the raider IDs"""
         # just print out the ids
         raid_id = raid_info["ID"]
         ids = ' '.join(raid_info["RAIDERS"].keys())
@@ -358,6 +366,7 @@ class Moderation:
 
     @raid_info.command("pretty")
     async def raid_info_pretty(self, ctx, raid_info: RaidInfo):
+        """Pretty list of all raider ids, names, join time and action taken, can be spammy for large raids"""
         # get longest name to keep things pretty
         lengths = [len(info["user_name"]) for info in raid_info["RAIDERS"].values()]
         lengths.append(20)
@@ -373,7 +382,7 @@ class Moderation:
         for page in pages:
             await ctx.send(page)
 
-    @commands.group()
+    @commands.group(hidden=True)
     async def inf(self, ctx):
         pass
 
@@ -405,11 +414,13 @@ class Moderation:
 
     @commands.group()
     async def raid_act(self, ctx):
-        if ctx.invoked_subcommand == self.raid_act:
-            await ctx.send("Please use the subcommands: 'ban', 'kick' or 'dismiss'")
+        """Base command for acting upon past raids, or raids from other servers on this server"""
+        if ctx.command == self.raid_act:
+            await ctx.invoke(self.bot.get_command("help"), "raid_act")
 
     @raid_act.command("ban")
     async def raid_act_ban(self, ctx, raid_info: RaidInfo):
+        """Bans all raiders"""
         async def yes():
             # targeting all raiders
             raid_info["TODO"] = [int(id) for id in raid_info["RAIDERS"].keys()]
@@ -422,6 +433,7 @@ class Moderation:
 
     @raid_act.command("kick")
     async def raid_act_kick(self, ctx, raid_info: RaidInfo):
+        """Kick all raiders"""
         async def yes():
             # targeting all raiders
             raid_info["TODO"] = [int(id) for id in raid_info["RAIDERS"].keys()]
@@ -434,6 +446,7 @@ class Moderation:
 
     @raid_act.command("dismiss")
     async def raid_act_dismiss(self, ctx, raid_info: RaidInfo):
+        """Dismiss the raid, will unmute them all"""
         async def yes():
             # targeting all raiders
             raid_info["TODO"] = [int(id) for id in raid_info["RAIDERS"].keys()]
