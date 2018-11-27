@@ -37,7 +37,7 @@ async def on_ready():
 
 @bot.event
 async def on_message(message: discord.Message):
-    if message.author.bot:
+    if message.author.bot or message.guild is None:
         return
     ctx: commands.Context = await bot.get_context(message)
     if ctx.valid and ctx.command is not None:

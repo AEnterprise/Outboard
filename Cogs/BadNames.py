@@ -85,7 +85,6 @@ class BadNames:
             if len(self.name_messages) > 50:
                 del self.name_messages[sorted(self.name_messages.keys())[0]]
 
-
     def get_matches(self, guild_id, name):
         return self.detectors[guild_id].findall(name) if guild_id in self.detectors else []
 
@@ -97,7 +96,6 @@ class BadNames:
         """Base command for managing the name blacklist"""
         if ctx.command == self.blacklist:
             await ctx.invoke(self.bot.get_command("help"), "blacklist")
-
 
     @blacklist.command()
     async def show(self, ctx):
@@ -208,10 +206,11 @@ class BadNames:
                 else:
                     await channel.send("Nickname set!")
 
-
     async def on_reaction_add(self, reaction, user):
         if reaction.message.id in self.name_messages and user.id != self.bot.user.id and reaction.emoji in self.actions:
-            await self.actions[reaction.emoji](reaction.message.channel, self.name_messages[reaction.message.id], reaction.message.id, user)
+            await self.actions[reaction.emoji](reaction.message.channel, self.name_messages[reaction.message.id],
+                                               reaction.message.id, user)
+
 
 def setup(bot):
     bot.add_cog(BadNames(bot))

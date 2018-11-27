@@ -12,7 +12,7 @@ class Maintenance:
         return await ctx.bot.is_owner(ctx.author)
 
     @commands.command()
-    async def restart(self, ctx):
+    async def reboot(self, ctx):
         """Restarts the bot"""
         await ctx.send("Restarting...")
         await Utils.clean_exit(self.bot, ctx.author.name)

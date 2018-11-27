@@ -215,9 +215,10 @@ class Moderation:
         # notify other server if we didn't dismiss it, if we did they already got notified about the false alarm
         if not dismised:
             for other_guild in self.bot.guilds:
-                channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
-                if channel is not None:
-                    await channel.send(f"Raid party over at {guild} has ended (raid ID {raid_id}. If you want to cross ban now would be a great time.\nFor more info on the raid: ``!raid_info pretty {raid_id}``\nFor crossbanning: ``!raid_act ban {raid_id}``")
+                if other_guild != channel.guild:
+                    new_channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
+                    if new_channel is not None:
+                        await new_channel.send(f"Raid party over at {guild} has ended (raid ID {raid_id}. If you want to cross ban now would be a great time.\nFor more info on the raid: ``!raid_info pretty {raid_id}``\nFor crossbanning: ``!raid_act ban {raid_id}``")
 
     @staticmethod
     def _save_raid(raid_info):
@@ -315,7 +316,7 @@ class Moderation:
         failures = []
         # terminate raid
         if channel.guild.id in self.under_raid:
-            await self._terminate_raid(channel.guild)
+            await self._terminate_raid(channel.guild, dismised=True)
         message = await channel.send("Unmuting people...")
         # remove mute role from people who have been detected
         for target in targets:
@@ -337,9 +338,10 @@ class Moderation:
 
         # notify it was just a false alarm so they can stand down
         for other_guild in self.bot.guilds:
-            channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
-            if channel is not None:
-                await channel.send(f"Raid over at {channel.guild} turned out to not be an actual raid and has been dismissed. Sorry to all who worried about nothing now.")
+            if other_guild != channel.guild:
+                new_channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
+                if new_channel is not None:
+                    await new_channel.send(f"Raid over at {channel.guild} turned out to not be an actual raid and has been dismissed. Sorry to all who worried about nothing now.")
 
     @commands.group("raid_info")
     async def raid_info(self, ctx):
