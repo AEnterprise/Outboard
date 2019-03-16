@@ -11,7 +11,8 @@ from Util import Utils, Confirmation, Configuration, Logging
 from Util.Converters import PotentialID, Reason, RaidInfo
 
 
-class Moderation:
+class Moderation(commands.Cog):
+
     def __init__(self, bot):
         self.bot: commands.Bot = bot
         self.trackers = dict()
@@ -35,7 +36,7 @@ class Moderation:
             "✖": self.dismiss_raid
         }
 
-    async def __local_check(self, ctx):
+    async def cog_check(self, ctx):
         return ctx.author.guild_permissions.ban_members
 
     @staticmethod
@@ -93,6 +94,7 @@ class Moderation:
 
         await Confirmation.confirm(ctx, "Are you sure you want to ban all those people?", on_yes=yes)
 
+    @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         self.bot.loop.create_task(self._track(member))
 
@@ -462,6 +464,7 @@ class Moderation:
     def _get_mod_channel(self, guild):
         return self.bot.get_channel(Configuration.get_var(guild, f"MOD_CHANNEL"))
 
+    @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
         guild_id = reaction.message.guild.id
         if guild_id in self.under_raid:

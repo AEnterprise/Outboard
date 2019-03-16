@@ -8,7 +8,7 @@ from discord.ext import commands
 from Util import Configuration, Utils
 
 
-class BadNames:
+class BadNames(commands.Cog):
 
     def __init__(self, bot):
         self.bot: commands.Bot = bot
@@ -31,6 +31,7 @@ class BadNames:
             capture = "|".join(bad_names)
             self.detectors[guild.id] = re.compile(f"({capture})", flags=re.IGNORECASE)
 
+    @commands.Cog.listener()
     async def on_member_update(self, before, after):
         if after.id in self.handled:
             self.handled.remove(after.id)
@@ -43,6 +44,7 @@ class BadNames:
                 if member is not None:
                     await self.check_name(member)
 
+    @commands.Cog.listener()
     async def on_member_join(self, member):
         # delay checking the name by 2 seconds to allow the raid alarm to engage first in big, fast raids
         await asyncio.sleep(2)
@@ -50,7 +52,8 @@ class BadNames:
         if member.guild.id in self.bot.get_cog("Moderation").under_raid:
             return
         await self.check_name(member)
-
+    
+    
     async def check_name(self, member):
         name_matches = self.get_matches_pretty(member.guild.id, member.name)
         if member.nick is not None:
@@ -202,6 +205,7 @@ class BadNames:
                 else:
                     await channel.send("Nickname set!")
 
+    @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
         if reaction.message.id in self.name_messages and user.id != self.bot.user.id and reaction.emoji in self.actions:
             await self.actions[reaction.emoji](reaction.message.channel, self.name_messages[reaction.message.id],
