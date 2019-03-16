@@ -4,11 +4,11 @@ from discord.ext import commands
 from Util import Utils, Logging, Configuration
 
 
-class Maintenance:
+class Maintenance(commands.Cog):
     def __init__(self, bot):
         self.bot: commands.Bot = bot
 
-    async def __local_check(self, ctx):
+    async def cog_check(self, ctx):
         return await ctx.bot.is_owner(ctx.author)
 
     @commands.command()
