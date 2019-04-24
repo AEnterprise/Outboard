@@ -38,7 +38,10 @@ class BadNames(commands.Cog):
             return
         if before.nick != after.nick:
             await self.check_name(after)
-        elif before.name != after.name:
+
+    @commands.Cog.listener()
+    async def on_user_update(self, before: discord.User, after):
+        if before.name != after.name:
             for guild in self.bot.guilds:
                 member = guild.get_member(after.id)
                 if member is not None:
@@ -52,6 +55,9 @@ class BadNames(commands.Cog):
         if member.guild.id in self.bot.get_cog("Moderation").under_raid:
             return
         await self.check_name(member)
+
+
+
     
     
     async def check_name(self, member):
