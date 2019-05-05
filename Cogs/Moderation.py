@@ -134,6 +134,7 @@ class Moderation(commands.Cog):
         if channel is not None and len(raid_info["TODO"]) is 0:
             if len(raid_info["RAIDERS"]) > 0:
                 await channel.send("New raid group detected!")
+            raid_info["MESSAGE"] = "PENDING"
             raid_info["MESSAGE"] = await self.send_dash(channel, self.under_raid[guild_id])
         raid_info["RAIDERS"][str(member.id)] = {
             "user_name": str(member),
@@ -229,10 +230,11 @@ class Moderation(commands.Cog):
 
     async def _update_status(self, guild):
         raid_info = self.under_raid[guild]
-        if raid_info["MESSAGE"] is not None:
+        if raid_info["MESSAGE"] is not None and raid_info["MESSAGE"] != "PENDING":
             await raid_info["MESSAGE"].edit(content=self._get_message(raid_info))
 
     async def send_dash(self, channel, raid_info):
+        raid_info["MESSAGE"] = "PENDING"
         message = await channel.send(self._get_message(raid_info))
         raid_info["MESSAGE"] = message
         await Utils.add_reactions(message, self.actions)
