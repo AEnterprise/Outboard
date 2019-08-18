@@ -7,7 +7,7 @@ fi
 
 echo "Installing requirements..."
 
-python3 -m pip install -U git+https://github.com/Rapptz/discord.py@rewrite
+python3 -m pip install -U discord.py
 
 echo "Requirements installed, creating config, please answer the following questions. If you make a mistake you can terminate the script and start again or edit the values in config/master.json"
 
