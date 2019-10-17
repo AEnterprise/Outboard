@@ -186,7 +186,7 @@ class Moderation(commands.Cog):
             if other_guild is not guild:
                 channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
                 if channel is not None:
-                    await channel.send(f"⚠ Heads up: {guild} is being raided (raid ID: {raid_id}! They might try to raid this server as well. Spoiler alert: They'll fail")
+                    await channel.send(f"⚠ Heads up: {guild} is being raided (raid ID: {raid_id})! They might try to raid this server as well. Spoiler alert: They'll fail")
 
     async def _alarm_checker(self, guild):
         guild_id = guild.id
@@ -214,14 +214,14 @@ class Moderation(commands.Cog):
             left = len(raid_info["TODO"])
             handled = total - left
             await channel.send(
-                f"Raid party is over :( Guess i'm done handing out special roles (for now).\n**Summary:**\nRaid ID: {raid_info['ID']}\n{total} guests showed up for the party\n{left} are still hanging out, enjoying that oh so special role they got\n{handled} are no longer with us.")
+                f"Raid party is over :( Guess I'm done handing out special roles (for now).\n**Summary:**\nRaid ID: {raid_info['ID']}\n{total} guests showed up for the party\n{left} are still hanging out, enjoying that oh so special role they got\n{handled} are no longer with us.")
         # notify other server if we didn't dismiss it, if we did they already got notified about the false alarm
         if not dismised:
             for other_guild in self.bot.guilds:
                 if other_guild != channel.guild:
                     new_channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
                     if new_channel is not None:
-                        await new_channel.send(f"Raid party over at {guild} has ended (raid ID {raid_id}. If you want to cross ban now would be a great time.\nFor more info on the raid: ``!raid_info pretty {raid_id}``\nFor crossbanning: ``!raid_act ban {raid_id}``")
+                        await new_channel.send(f"Raid party over at {guild} has ended (raid ID {raid_id}). If you want to cross ban now would be a great time.\nFor more info on the raid: ``!raid_info pretty {raid_id}``\nFor crossbanning: ``!raid_act ban {raid_id}``")
 
     @staticmethod
     def _save_raid(raid_info):
