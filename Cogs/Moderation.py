@@ -1,9 +1,9 @@
 import asyncio
-import os
 import time
-from datetime import datetime
 
 import discord
+import os
+from datetime import datetime
 from discord.ext import commands
 from discord.ext.commands import MemberConverter, BadArgument, Greedy
 
@@ -132,9 +132,9 @@ class Moderation(commands.Cog):
         raid_info = self.under_raid[guild_id]
         channel = self._get_mod_channel(member.guild.id)
         if channel is not None and len(raid_info["TODO"]) is 0:
+            raid_info["MESSAGE"] = "PENDING"
             if len(raid_info["RAIDERS"]) > 0:
                 await channel.send("New raid group detected!")
-            raid_info["MESSAGE"] = "PENDING"
             raid_info["MESSAGE"] = await self.send_dash(channel, self.under_raid[guild_id])
         raid_info["RAIDERS"][str(member.id)] = {
             "user_name": str(member),
@@ -186,7 +186,7 @@ class Moderation(commands.Cog):
             if other_guild is not guild:
                 channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
                 if channel is not None:
-                    await channel.send(f"⚠ Heads up: {guild} is being raided (raid ID: {raid_id})! They might try to raid this server as well. Spoiler alert: They'll fail")
+                    await channel.send(f"⚠ Heads up: {guild} is being raided (raid ID: {raid_id})! They might try to raid this server as well.")
 
     async def _alarm_checker(self, guild):
         guild_id = guild.id
@@ -214,14 +214,14 @@ class Moderation(commands.Cog):
             left = len(raid_info["TODO"])
             handled = total - left
             await channel.send(
-                f"Raid party is over :( Guess I'm done handing out special roles (for now).\n**Summary:**\nRaid ID: {raid_info['ID']}\n{total} guests showed up for the party\n{left} are still hanging out, enjoying that oh so special role they got\n{handled} are no longer with us.")
+                f"No longer detecting any signs of a raid\n**Summary:**\nRaid ID: {raid_info['ID']}\n{total} raiders spotted\n{left} of them are still in the server but muted\n{handled} are no longer on this server².")
         # notify other server if we didn't dismiss it, if we did they already got notified about the false alarm
         if not dismised:
             for other_guild in self.bot.guilds:
                 if other_guild != channel.guild:
                     new_channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
                     if new_channel is not None:
-                        await new_channel.send(f"Raid party over at {guild} has ended (raid ID {raid_id}). If you want to cross ban now would be a great time.\nFor more info on the raid: ``!raid_info pretty {raid_id}``\nFor crossbanning: ``!raid_act ban {raid_id}``")
+                        await new_channel.send(f"No longer detecting any signs of a raid in {guild}\nRaid ID {raid_id}. For more info on the raid: ``!raid_info pretty {raid_id}``\nFor crossbanning: ``!raid_act ban {raid_id}``")
 
     @staticmethod
     def _save_raid(raid_info):
@@ -247,7 +247,7 @@ class Moderation(commands.Cog):
         past = total - current
         now = datetime.utcfromtimestamp(time.time())
         remaining = self.raid_timeout - (now - raid_info["LAST_JOIN"]).seconds
-        return f"Total raiders: {total}\nRaiders already handled: {past}\nRaiders locked in for mod actions: {current}\nTime until alarm reset: {remaining} seconds"
+        return f"Total raiders: {total}\nRaiders already handled: {past}\nRaiders reacting would act on: {current}\nTime until alarm reset: {remaining} seconds"
 
     async def mute(self, member):
         role = member.guild.get_role(Configuration.get_var(member.guild.id, "MUTE_ROLE"))
@@ -262,10 +262,10 @@ class Moderation(commands.Cog):
         """Current server raid status"""
         if ctx.guild.id in self.under_raid:
             await ctx.send(
-                "This server is being raided, everyone who joins now gets a special role and thrown into the report pool! :D")
+                "This server is being raided!")
             await self.send_dash(ctx, self.under_raid[ctx.guild.id])
         else:
-            await ctx.send("I'm bored, there is no raid going on atm :(")
+            await ctx.send("There is no raid going on atm")
 
     async def ban_all_raiders(self, channel, raid_info):
         """Ban all the raiders"""
@@ -274,7 +274,7 @@ class Moderation(commands.Cog):
         targets = [discord.Object(m) for m in raid_info["TODO"]]
         raid_info["TODO"] = []
         failures = []
-        message = await channel.send("Showing raiders the door...")
+        message = await channel.send("Banning raiders...")
         for target in targets:
             try:
                 await channel.guild.ban(target, reason=f"Raid cleanup, raid ID: {raid_info['ID']}")
@@ -295,7 +295,7 @@ class Moderation(commands.Cog):
         raid_info["TODO"] = []
         failures = []
         left = 0
-        message = await channel.send("Grabbing my boots...")
+        message = await channel.send("Kicking raiders...")
         for target in targets:
             try:
                 member = channel.guild.get_member(target)
@@ -307,7 +307,7 @@ class Moderation(commands.Cog):
             except discord.HTTPException:
                 failures.append(str(target))
         await message.edit(
-            content=f"Kicked {len(targets) - len(failures)} raiders\nFailed to boot {len(failures)} raiders\n{left} Already left")
+            content=f"Kicked {len(targets) - len(failures)} raiders\nFailed to kick {len(failures)} raiders\n{left} already left")
         if len(failures) > 0:
             test = '\n'
             for page in Utils.paginate(f"🚫 I failed to kick the following users:\n{test.join(failures)}"):
@@ -315,7 +315,7 @@ class Moderation(commands.Cog):
 
     async def dismiss_raid(self, channel, raid_info):
         """Dismiss raid as false alarm, will also remove the mute role from all of them again"""
-        await channel.send("That wasn't a raid? Sorry about that, turning off the alarms")
+        await channel.send("Dismissing raid")
         targets = [m for m in raid_info["TODO"]]
         failures = []
         # terminate raid
@@ -345,7 +345,7 @@ class Moderation(commands.Cog):
             if other_guild != channel.guild:
                 new_channel = self.bot.get_channel(Configuration.get_var(other_guild.id, f"MOD_CHANNEL"))
                 if new_channel is not None:
-                    await new_channel.send(f"Raid over at {channel.guild} turned out to not be an actual raid and has been dismissed. Sorry to all who worried about nothing now.")
+                    await new_channel.send(f"Raid over at {channel.guild} turned out to not be an actual raid and has been dismissed.")
 
     @commands.group("raid_info")
     async def raid_info(self, ctx):
